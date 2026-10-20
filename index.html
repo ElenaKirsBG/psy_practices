@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>Психосоматика & Практики</title>
+  <link rel="manifest" href="manifest.json">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Пси-Практики">
+  <link rel="apple-touch-icon" href="icon-192.png">
+  <style>
+    :root { --primary: #4f46e5; --bg: #f4f6f9; --card-bg: #ffffff; --text: #1f2937; --text-muted: #6b7280; }
+    * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background-color: var(--bg); color: var(--text); margin: 0; padding: 20px 16px 40px 16px; }
+    .header { text-align: center; margin-bottom: 20px; }
+    .header h1 { font-size: 22px; font-weight: 700; margin: 0 0 6px 0; }
+    .header p { font-size: 13px; color: var(--text-muted); margin: 0; }
+    .search-box { width: 100%; padding: 14px 16px; border-radius: 12px; border: 1px solid #e5e7eb; font-size: 16px; background: #fff; margin-bottom: 14px; outline: none; }
+    .categories { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 10px; margin-bottom: 16px; }
+    .chip { background: #e2e8f0; color: #333; padding: 8px 16px; border-radius: 20px; font-size: 14px; white-space: nowrap; border: none; cursor: pointer; }
+    .chip.active { background: var(--primary); color: #fff; font-weight: 600; }
+    .card { background: var(--card-bg); border-radius: 14px; padding: 16px; margin-bottom: 14px; box-shadow: 0 2px 8px rgba(0,0,0,0.04); cursor: pointer; }
+    .card-title { font-size: 18px; font-weight: 600; margin: 0 0 4px 0; color: #111827; }
+    .card-category { font-size: 11px; font-weight: 700; color: var(--primary); text-transform: uppercase; margin-bottom: 8px; }
+    .card-goal { font-size: 14px; color: #4b5563; line-height: 1.4; margin-bottom: 10px; }
+    .tags-row { display: flex; flex-wrap: wrap; gap: 6px; }
+    .tag { font-size: 12px; color: #6b7280; background: #f3f4f6; padding: 3px 8px; border-radius: 6px; }
+    .modal { display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); z-index: 1000; padding: 20px 16px; overflow-y: auto; }
+    .modal-content { background: #fff; border-radius: 18px; padding: 24px; max-width: 600px; margin: 40px auto; position: relative; }
+    .close-btn { position: absolute; top: 16px; right: 16px; background: #f3f4f6; border: none; border-radius: 50%; width: 32px; height: 32px; font-size: 18px; font-weight: bold; color: #4b5563; cursor: pointer; }
+    .step-item { margin-bottom: 10px; line-height: 1.5; font-size: 15px; color: #374151; }
+    .section-title { font-size: 15px; font-weight: 700; color: #111827; margin: 16px 0 6px 0; }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <h1>Психосоматика & Практики</h1>
+    <p>Автономный справочник (Оффлайн)</p>
+  </div>
+  <input type="text" id="searchInput" class="search-box" placeholder="Поиск по запросу (выгорание, самооценка...)" oninput="filterPractices()">
+  <div class="categories" id="categoryContainer">
+    <button class="chip active" onclick="setCategory('all', this)">Все</button>
+    <button class="chip" onclick="setCategory('Аутентичность', this)">Самооценка</button>
+    <button class="chip" onclick="setCategory('Взаимоотношения и границы', this)">Границы & Отношения</button>
+    <button class="chip" onclick="setCategory('Гештальт-техники', this)">Гештальт</button>
+  </div>
+  <div id="practicesList"></div>
+  <div id="detailModal" class="modal">
+    <div class="modal-content">
+      <button class="close-btn" onclick="closeModal()">✕</button>
+      <div id="modalCategory" class="card-category"></div>
+      <h2 id="modalTitle" style="margin-top:0;"></h2>
+      <div class="section-title">⏱ Длительность & Материалы:</div>
+      <p id="modalProps" style="font-size:14px; color:#4b5563; margin:0;"></p>
+      <div class="section-title">🎯 Цель практики:</div>
+      <p id="modalGoal" style="font-size:14px; color:#4b5563; margin:0;"></p>
+      <div class="section-title">📝 Шаги выполнения:</div>
+      <div id="modalSteps"></div>
+      <div class="section-title">💡 Эффективность:</div>
+      <p id="modalEffectiveness" style="font-size:14px; color:#4b5563; margin:0;"></p>
+    </div>
+  </div>
+  <script>
+    const practices = [
+      {
+        id: "1", title: "Упражнение «Автопортрет»", category: "Аутентичность",
+        tags: ["самооценка", "самопознание", "аутентичность", "проективная"],
+        goal: "Развитие самопознания и самовыражения через арт-терапевтический образ, исследование внутреннего мира.",
+        duration: "30-40 минут", props: "Бумага А3/А4, цветные карандаши, краски.",
+        steps: ["1. Закройте глаза и настройтесь на внутренние ощущения, эмоции и образ собственного 'Я'.", "2. Нарисуйте автопортрет, отражающий внутреннее состояние, а не внешнее сходство.", "3. Проанализируйте ключевые цвета, масштаб фигуры и расположение элементов на листе."],
+        effectiveness: "Выявляет уровень самооценки, скрытые блоки и неосознаваемые эмоциональные состояния."
+      },
+      {
+        id: "2", title: "Упражнение «Внутренний голос»", category: "Аутентичность",
+        tags: ["самооценка", "тревожность", "внутренний критик"],
+        goal: "Осознание внутреннего диалога, сепарация истинных желаний от навязанных установок.",
+        duration: "20-30 минут", props: "Бумага, ручка, таймер.",
+        steps: ["1. Выполните 3-минутную дыхательную медитацию.", "2. В течение 10 минут непрерывно записывайте все возникающие мысли без цензуры.", "3. Выделите флуоресцентным маркером суждения, принадлежащие 'Внутреннему критику'."],
+        effectiveness: "Снижает уровень фоновой тревожности, помогает нейтрализовать автокритику."
+      },
+      {
+        id: "3", title: "Упражнение «Граница контакта»", category: "Взаимоотношения и границы",
+        tags: ["отношения", "границы", "контакт", "тело"],
+        goal: "Исследование личных границ и физической дистанции в пространстве.",
+        duration: "10-15 минут", props: "Свободная комната.",
+        steps: ["1. Встаньте напротив партнера на расстоянии 3-4 метров.", "2. Попросите партнера медленно двигаться в вашу сторону.", "3. Жестом и словом 'Стоп' остановите движение в момент первого появления комфортного барьера."],
+        effectiveness: "Формирует четкое телесное чувствование телесных и психоэмоциональных границ."
+      },
+      {
+        id: "4", title: "Техника «Пустой стул»", category: "Гештальт-техники",
+        tags: ["гештальт", "конфликт", "незавершенный гештальт", "эмоции"],
+        goal: "Проработка незавершенных ситуаций (обида, вина, выраженный конфликт).",
+        duration: "25-35 минут", props: "Два стула, поставленные друг напротив друга.",
+        steps: ["1. Посадите на противоположный стул воображаемого человека или проекцию симптома/эмоции.", "2. Выразите ему все незавершенные чувства, претензии или благодарность.", "3. Пересядьте на противоположный стул и ответьте из позиции собеседника."],
+        effectiveness: "Освобождает заблокированный эмоциональный аффект, завершает старые паттерны."
+      }
+    ];
+    let selectedCategory = 'all';
+    function renderPractices(items) {
+      const list = document.getElementById('practicesList');
+      list.innerHTML = '';
+      if(items.length === 0) { list.innerHTML = '<p style="text-align:center; color:#888;">Ничего не найдено</p>'; return; }
+      items.forEach(p => {
+        const card = document.createElement('div');
+        card.className = 'card';
+        card.onclick = () => openModal(p);
+        card.innerHTML = `<div class="card-category">${p.category}</div><div class="card-title">${p.title}</div><div class="card-goal">${p.goal}</div><div class="tags-row">${p.tags.map(t => `<span class="tag">#${t}</span>`).join('')}</div>`;
+        list.appendChild(card);
+      });
+    }
+    function filterPractices() {
+      const q = document.getElementById('searchInput').value.toLowerCase();
+      const filtered = practices.filter(p => {
+        const matchQ = p.title.toLowerCase().includes(q) || p.goal.toLowerCase().includes(q) || p.tags.some(t => t.toLowerCase().includes(q));
+        const matchC = selectedCategory === 'all' || p.category === selectedCategory;
+        return matchQ && matchC;
+      });
+      renderPractices(filtered);
+    }
+    function setCategory(cat, btn) {
+      selectedCategory = cat;
+      document.querySelectorAll('.chip').forEach(c => c.classList.remove('active'));
+      btn.classList.add('active');
+      filterPractices();
+    }
+    function openModal(p) {
+      document.getElementById('modalCategory').innerText = p.category;
+      document.getElementById('modalTitle').innerText = p.title;
+      document.getElementById('modalProps').innerText = `${p.duration} | ${p.props}`;
+      document.getElementById('modalGoal').innerText = p.goal;
+      document.getElementById('modalEffectiveness').innerText = p.effectiveness;
+      document.getElementById('modalSteps').innerHTML = p.steps.map(s => `<div class="step-item">${s}</div>`).join('');
+      document.getElementById('detailModal').style.display = 'block';
+    }
+    function closeModal() { document.getElementById('detailModal').style.display = 'none'; }
+    if ('serviceWorker' in navigator) { window.addEventListener('load', () => { navigator.serviceWorker.register('sw.js'); }); }
+    renderPractices(practices);
+  </script>
+</body>
+</html>
