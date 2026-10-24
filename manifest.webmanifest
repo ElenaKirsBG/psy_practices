@@ -1,0 +1,15 @@
+{
+  "name": "Психологические практики и техники",
+  "short_name": "Практики",
+  "description": "Офлайн-библиотека психологических практик, техник и алгоритмов сессий",
+  "lang": "ru",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#f6f3ec",
+  "theme_color": "#5d7d70",
+  "icons": [
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+  ]
+}
