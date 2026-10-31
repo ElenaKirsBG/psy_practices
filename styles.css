@@ -197,3 +197,42 @@ input[type=range] { width: 100%; accent-color: var(--accent); }
 .pickrow { display: block; width: 100%; text-align: left; padding: 11px 6px; border: 0; border-bottom: 1px solid var(--line); background: transparent; font-family: var(--serif); cursor: pointer; }
 .pickrow:active { background: var(--surface2); }
 .sectionlabel a { text-transform: none; letter-spacing: 0; }
+
+/* ---------- v3: финансы ---------- */
+.segnav { display: flex; background: var(--surface2); border-radius: 12px; padding: 3px; margin-bottom: 12px; }
+.segnav a { flex: 1; text-align: center; padding: 8px 4px; border-radius: 10px; text-decoration: none; color: var(--muted); font-size: .9rem; font-weight: 600; }
+.segnav a.on { background: var(--surface); color: var(--ink); box-shadow: var(--shadow); }
+.badge { display: inline-block; min-width: 18px; padding: 0 5px; border-radius: 9px; background: #c0533f; color: #fff; font-size: .72rem; line-height: 18px; }
+.paytag { margin-left: auto; font: 600 .72rem/1 var(--sans); padding: 4px 7px; border-radius: 7px; white-space: nowrap; }
+.jtop .paytag ~ .paytag { margin-left: 4px; }
+.paytag.ok { background: #e5f4e4; color: #2f6b34; } .paytag.debt { background: #fbe3df; color: #a8392a; } .paytag.pkg { background: #e7f1fb; color: #2f5d8a; } .paytag.free { background: var(--surface2); color: var(--muted); }
+:root[data-theme="dark"] .paytag.ok { background: #233a26; color: #9fd39f; } :root[data-theme="dark"] .paytag.debt { background: #45251f; color: #f0a596; } :root[data-theme="dark"] .paytag.pkg { background: #1f3044; color: #9cc3ea; }
+.jtop { align-items: center; flex-wrap: wrap; }
+.jtop .iconbtn { margin-left: 4px; width: 30px; height: 30px; }
+b.debt, .debt { color: #a8392a; }
+.paybox { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 10px 12px 4px; margin-top: 14px; }
+.paybox .lbl { margin-top: 2px; }
+select.field { -webkit-appearance: none; appearance: none; background-image: linear-gradient(45deg, transparent 50%, var(--muted) 50%), linear-gradient(135deg, var(--muted) 50%, transparent 50%); background-position: calc(100% - 16px) 50%, calc(100% - 11px) 50%; background-size: 5px 5px; background-repeat: no-repeat; padding-right: 28px; }
+.statgrid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 12px; }
+.statgrid.four { grid-template-columns: repeat(4, 1fr); }
+.stat { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 10px 12px; display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.stat span { font-size: .74rem; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
+.stat b { font: 600 1.15rem/1.25 var(--serif); overflow-wrap: anywhere; }
+.stat small { font-size: .74rem; color: var(--muted); }
+.stat.money b { font-size: 1.3rem; color: var(--accent); }
+.stat.bad b { color: #a8392a; }
+.statgrid.four .stat b { font-size: 1.1rem; }
+@media (max-width: 380px) { .statgrid.four { grid-template-columns: 1fr 1fr; } }
+.debtcard .toolbar { margin: 8px 0 0; }
+.debtcard a { color: inherit; }
+.mrow { display: flex; gap: 10px; align-items: center; padding: 6px 0; border-bottom: 1px dashed var(--line); }
+.mrow:last-child { border-bottom: 0; }
+.mname { width: 96px; flex: none; font-size: .85rem; color: var(--muted); }
+.mbars { flex: 1; display: grid; gap: 4px; min-width: 0; }
+.bar { position: relative; height: 22px; background: var(--surface2); border-radius: 6px; overflow: hidden; }
+.bar span { position: absolute; inset: 0 auto 0 0; background: var(--accent); opacity: .3; border-radius: 6px; }
+.bar em { position: relative; font: 600 .8rem/22px var(--sans); padding-left: 8px; font-style: normal; }
+.crow { display: flex; justify-content: space-between; gap: 10px; padding: 9px 0; border-bottom: 1px dashed var(--line); color: var(--ink); text-decoration: none; }
+.crow:last-child { border-bottom: 0; }
+.crow span { min-width: 0; } .crow small { display: block; color: var(--muted); font-size: .78rem; }
+.crow b { white-space: nowrap; font-family: var(--serif); }
