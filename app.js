@@ -2,8 +2,8 @@
 'use strict';
 
 const APP_NAME = 'Психокабинет';
-const APP_VERSION = '3.0.0';
-const CACHE_NAME = 'psykab-v3';
+const APP_VERSION = '4.0.0';
+const CACHE_NAME = 'psykab-v4';
 const CORE_COUNT = 16;
 
 const S = { items: [], byId: {}, meta: null, topics: [], topicById: {}, algs: [], algById: {}, ready: false, indexed: false, kindFilter: '' };
@@ -552,6 +552,15 @@ const CUR = { RUB: '₽', EUR: '€', USD: '$', BGN: 'лв', GBP: '£', KZT: '�
 const CUR_NAMES = { RUB: 'Рубль', EUR: 'Евро', USD: 'Доллар США', BGN: 'Болгарский лев', GBP: 'Фунт', KZT: 'Тенге', UAH: 'Гривна', BYN: 'Бел. рубль', GEL: 'Лари', AMD: 'Драм', TRY: 'Турецкая лира', ILS: 'Шекель', AED: 'Дирхам ОАЭ', PLN: 'Злотый', CZK: 'Чешская крона', RSD: 'Сербский динар', CHF: 'Франк', CAD: 'Канадский доллар', UZS: 'Узб. сум', KGS: 'Сом', AZN: 'Манат', MDL: 'Молд. лей', THB: 'Бат', CNY: 'Юань' };
 const PAY = { paid: 'Оплачено', unpaid: 'Не оплачено', package: 'Из пакета', free: 'Бесплатно' };
 const TARIFF = { regular: 'Обычный', discount: 'Со скидкой', free: 'Бесплатный' };
+/* отмены: кто отменил; оплата отменённой сессии (по умолчанию — без оплаты) */
+const CANCEL = { client: 'Отменена клиентом', psy: 'Отменена психологом' };
+const PAY_CX = { none: 'Без оплаты', paid: 'Оплачено', unpaid: 'Не оплачено', package: 'Списать из пакета' };
+const CX_REASONS = ['Болезнь', 'Забыл(а) о встрече', 'Не пришёл(ла) без предупреждения', 'Работа / командировка', 'Семейные обстоятельства', 'Технические проблемы связи', 'Финансовые причины', 'Перенос на другую дату', 'Болезнь психолога', 'Отпуск психолога', 'Форс-мажор'];
+const held = arr => arr.filter(e => !e.cancel);
+const cxOf = arr => arr.filter(e => e.cancel);
+function cxTag(e) { return e.cancel ? `<span class="paytag cx">${CANCEL[e.cancel] || 'Отменена'}</span>` : ''; }
+function cxLine(e) { return e.cancel ? `<p class="cxr">✕ ${CANCEL[e.cancel]}${e.cancelReason ? ': ' + esc(e.cancelReason) : ''}</p>` : ''; }
+function cxSummary(arr) { const c = cxOf(arr), a = c.filter(e => e.cancel === 'client').length; return c.length ? `${c.length} (клиент ${a} · психолог ${c.length - a})` : '0'; }
 const defCur = () => store.get('settings', {}).cur || 'RUB';
 const defPrice = () => +(store.get('settings', {}).price || 0);
 const money = (n, c) => (Math.round((+n || 0) * 100) / 100).toLocaleString('ru-RU', { maximumFractionDigits: 2 }) + ' ' + (CUR[c] || c || '');
@@ -585,12 +594,12 @@ const sumText = byCur => Object.entries(byCur).filter(([, v]) => v).map(([c, v])
 /* все поступления: оплаченные сессии (по дате оплаты) + покупки пакетов */
 function receipts(from, to, name) {
   const r = [];
-  journal().forEach(e => { if (e.pay === 'paid' && +e.price) r.push({ date: e.paidDate || e.date, client: e.client, kind: 'Сессия ' + dateShort(e.date), amount: +e.price, cur: e.cur || defCur(), ref: '#/journal/edit/' + e.id }); });
+  journal().forEach(e => { if (e.pay === 'paid' && +e.price) r.push({ date: e.paidDate || e.date, client: e.client, kind: (e.cancel ? 'Отмена ' : 'Сессия ') + dateShort(e.date), amount: +e.price, cur: e.cur || defCur(), ref: '#/journal/edit/' + e.id }); });
   packages().forEach(p => { if (+p.amount) r.push({ date: p.date, client: p.client, kind: `Пакет ${p.count} ${plural(+p.count, ['сессия', 'сессии', 'сессий'])}`, amount: +p.amount, cur: p.cur || defCur(), ref: '#/client/' + encodeURIComponent(p.client) }); });
   return r.filter(x => (!from || x.date >= from) && (!to || x.date <= to) && (!name || x.client === name)).sort((a, b) => b.date.localeCompare(a.date));
 }
 function payTag(e) {
-  if (!e.pay) return '';
+  if (!e.pay || e.pay === 'none') return '';
   const cls = { paid: 'ok', unpaid: 'debt', package: 'pkg', free: 'free' }[e.pay];
   const amt = e.pay === 'free' ? '' : e.pay === 'package' ? '' : (+e.price ? money(e.price, e.cur) + ' · ' : '');
   return `<span class="paytag ${cls}">${amt}${PAY[e.pay]}</span>`;
@@ -609,19 +618,20 @@ function viewJournal(qs) {
     <div class="toolbar"><a class="btn primary" href="#/journal/new">${ICON.plus}Новая запись</a><button class="btn" id="exp">${ICON.share}Выгрузить в Word / PDF</button></div>
     <div class="searchbox small"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.5"/><path d="M16 16l4.5 4.5"/></svg><input id="jq" type="search" placeholder="Поиск: клиент, запрос, техника…" value="${esc(f.q)}"></div>
     <div class="period"><label>с <input type="date" id="jf" value="${f.from}"></label><label>по <input type="date" id="jt" value="${f.to}"></label><button class="chip" id="jm">Этот месяц</button><button class="chip" id="ja">Всё</button></div>
-    <div class="chips" id="jpay">${[['', 'Все'], ['paid', 'Оплачено'], ['unpaid', 'Не оплачено'], ['package', 'Из пакета'], ['free', 'Бесплатно']].map(([k, n]) => `<button class="chip ${f.pay === k ? 'on' : ''}" data-pay="${k}">${n}</button>`).join('')}</div>
+    <div class="chips" id="jpay">${[['', 'Все'], ['paid', 'Оплачено'], ['unpaid', 'Не оплачено'], ['package', 'Из пакета'], ['free', 'Бесплатно'], ['cancel', 'Отменённые']].map(([k, n]) => `<button class="chip ${k === 'cancel' ? 'cxchip ' : ''}${f.pay === k ? 'on' : ''}" data-pay="${k}">${n}</button>`).join('')}</div>
     <div id="jlist"></div>`;
   let payF = f.pay;
   const render = () => {
     const q = norm($('#jq').value.trim()), from = $('#jf').value, to = $('#jt').value;
-    const list = sortJ(journal()).filter(e => (!from || e.date >= from) && (!to || e.date <= to) && (!payF || e.pay === payF) && (!q || norm([e.client, e.topic, e.tech, e.note].join(' ')).includes(q)));
+    const list = sortJ(journal()).filter(e => (!from || e.date >= from) && (!to || e.date <= to) && (!payF || (payF === 'cancel' ? !!e.cancel : e.pay === payF)) && (!q || norm([e.client, e.topic, e.tech, e.note, e.cancelReason].join(' ')).includes(q)));
     const clients = new Set(list.map(e => e.client).filter(Boolean));
-    let html = `<p class="small">${list.length} ${plural(list.length, ['консультация', 'консультации', 'консультаций'])}${clients.size ? `, ${clients.size} ${plural(clients.size, ['клиент', 'клиента', 'клиентов'])}` : ''}</p>`;
+    const nh = held(list).length, nc = list.length - nh;
+    let html = `<p class="small">${nh} ${plural(nh, ['консультация', 'консультации', 'консультаций'])}${nc ? ` · <b class="debt">отменено ${nc}</b>` : ''}${clients.size ? `, ${clients.size} ${plural(clients.size, ['клиент', 'клиента', 'клиентов'])}` : ''}</p>`;
     let cur = '';
     list.forEach(e => {
       if (e.date !== cur) { cur = e.date; html += `<div class="sectionlabel">${dateLong(e.date)}, ${weekday(e.date)}</div>`; }
-      html += `<a class="card jcard" href="#/journal/edit/${e.id}"><div class="jtop"><span class="jtime">${esc(e.time || '—')}</span><b>${esc(e.client || 'Без имени')}</b>${payTag(e)}</div>
-        ${e.topic ? `<p><span class="jl">Запрос:</span> ${esc(e.topic)}</p>` : ''}${e.tech ? `<p><span class="jl">Техники:</span> ${esc(e.tech)}</p>` : ''}${e.note ? `<p class="jnote">${esc(e.note)}</p>` : ''}</a>`;
+      html += `<a class="card jcard${e.cancel ? ' cancelled' : ''}" href="#/journal/edit/${e.id}"><div class="jtop"><span class="jtime">${esc(e.time || '—')}</span><b>${esc(e.client || 'Без имени')}</b>${cxTag(e)}${payTag(e)}</div>
+        ${cxLine(e)}${e.topic ? `<p><span class="jl">Запрос:</span> ${esc(e.topic)}</p>` : ''}${e.tech ? `<p><span class="jl">Техники:</span> ${esc(e.tech)}</p>` : ''}${e.note ? `<p class="jnote">${esc(e.note)}</p>` : ''}</a>`;
     });
     if (!list.length) html += `<div class="empty">${journal().length ? 'Нет записей по выбранным условиям.' : 'Журнал пуст. Нажмите «Новая запись», чтобы внести первую консультацию.'}</div>`;
     $('#jlist').innerHTML = html;
@@ -645,11 +655,12 @@ function viewJournalEdit(id, qs) {
   const e = id ? arr.find(x => x.id === id) : { id: uid('j_'), date: today(), time: nowTime(), client: p.get('client') || '', topic: '', tech: p.get('tech') || '', note: '', price: '', cur: defCur(), pay: 'paid', paidDate: '' };
   if (!e) return viewNotFound();
   if (!e.cur) e.cur = defCur();
-  if (!e.pay) e.pay = 'paid';
+  if (!e.pay) e.pay = e.cancel ? 'none' : 'paid';
   setTab('journal'); setTitle(id ? 'Запись консультации' : 'Новая консультация', true);
   const clients = allClientNames();
   const topicsList = [...new Set([...arr.map(x => x.topic).filter(Boolean), ...S.topics.map(t => t.n)])];
   view.innerHTML = `<div class="form">
+    ${e.cancel ? `<div class="cxbanner">✕ ${CANCEL[e.cancel]}${e.cancelReason ? ' — ' + esc(e.cancelReason) : ''}</div>` : ''}
     <div class="row2"><label class="fl">Дата<input class="field" type="date" id="jd" value="${e.date}"></label><label class="fl">Время<input class="field" type="time" id="jtm" value="${esc(e.time)}"></label></div>
     <p class="wd" id="jwd">${e.date ? weekday(e.date) : ''}</p>
     <label class="fl">Клиент (имя или код)<input class="field" id="jc" list="clist" value="${esc(e.client)}" placeholder="Например: Анна К. или К-017"><datalist id="clist">${clients.map(c => `<option value="${esc(c)}">`).join('')}</datalist></label>
@@ -657,27 +668,38 @@ function viewJournalEdit(id, qs) {
     <label class="fl">Запрос / тема консультации<input class="field" id="jtp" list="tlist" value="${esc(e.topic)}" placeholder="Например: тревога перед выступлениями"><datalist id="tlist">${topicsList.map(c => `<option value="${esc(c)}">`).join('')}</datalist></label>
     <label class="fl">Техники<textarea class="field" id="jte" placeholder="Какие техники и практики использовали">${esc(e.tech)}</textarea></label>
     <div class="toolbar"><button class="btn" id="pick">${ICON.plus}Добавить технику из библиотеки</button></div>
+    <div class="cxbox${e.cancel ? ' on' : ''}" id="cxbox">
+      <div class="lbl">Сессия</div>
+      <div class="seg" id="jst"><button type="button" data-s="" class="${!e.cancel ? 'on' : ''}">Состоялась</button><button type="button" data-s="client" class="${e.cancel === 'client' ? 'on' : ''}">Отменена клиентом</button><button type="button" data-s="psy" class="${e.cancel === 'psy' ? 'on' : ''}">Отменена психологом</button></div>
+      <label class="fl" id="cxrow">Причина отмены<input class="field" id="jcx" list="cxlist" value="${esc(e.cancelReason || '')}" placeholder="Например: болезнь, забыл(а), перенос"><datalist id="cxlist">${CX_REASONS.map(r => `<option value="${esc(r)}">`).join('')}</datalist></label>
+    </div>
     <label class="fl">Заметка<textarea class="field big" id="jn" placeholder="Ключевые моменты, инсайты, домашнее задание, план на следующую встречу">${esc(e.note)}</textarea></label>
     <div class="paybox">
       <div class="lbl">Оплата</div>
-      <div class="seg" id="jpay">${Object.entries(PAY).map(([k, n]) => `<button type="button" data-p="${k}" class="${e.pay === k ? 'on' : ''}">${n}</button>`).join('')}</div>
+      <div class="seg" id="jpay"></div>
       <div class="row2" id="pricerow"><label class="fl">Стоимость<input class="field" type="number" inputmode="decimal" min="0" step="any" id="jpr" value="${esc(e.price)}" placeholder="0"></label><label class="fl">Валюта<select class="field" id="jcur">${curOptions(e.cur)}</select></label></div>
       <label class="fl" id="pdrow">Дата оплаты<input class="field" type="date" id="jpd" value="${e.paidDate || e.date}"></label>
       <p class="small" id="payhint"></p>
     </div>
     <div class="toolbar"><button class="btn primary" id="save">Сохранить</button>${id ? `<button class="btn" id="copyj">${ICON.copy}Следующая встреча</button><button class="btn danger" id="del">${ICON.trash}Удалить</button>` : ''}<button class="btn" id="cancel">Отмена</button></div>
-    ${id && e.client ? `<div class="toolbar"><a class="btn" href="#/client/${encodeURIComponent(e.client)}">Карточка клиента</a></div><div class="sectionlabel">Другие консультации клиента</div>${sortJ(arr).filter(x => x.client === e.client && x.id !== e.id).slice(0, 10).map(x => `<a class="card jcard" href="#/journal/edit/${x.id}"><div class="jtop"><span class="jtime">${dateShort(x.date)}</span><b>${esc(x.topic || 'без темы')}</b>${payTag(x)}</div>${x.tech ? `<p>${esc(x.tech)}</p>` : ''}</a>`).join('') || '<p class="small">Это первая запись.</p>'}` : ''}
+    ${id && e.client ? `<div class="toolbar"><a class="btn" href="#/client/${encodeURIComponent(e.client)}">Карточка клиента</a></div><div class="sectionlabel">Другие консультации клиента</div>${sortJ(arr).filter(x => x.client === e.client && x.id !== e.id).slice(0, 10).map(x => `<a class="card jcard${x.cancel ? ' cancelled' : ''}" href="#/journal/edit/${x.id}"><div class="jtop"><span class="jtime">${dateShort(x.date)}</span><b>${esc(x.topic || 'без темы')}</b>${cxTag(x)}${payTag(x)}</div>${x.tech ? `<p>${esc(x.tech)}</p>` : ''}</a>`).join('') || '<p class="small">Это первая запись.</p>'}` : ''}
   </div>`;
-  let pay = e.pay;
+  let pay = e.pay, cx = e.cancel || '';
   const syncPay = () => {
-    document.querySelectorAll('#jpay button').forEach(b => b.classList.toggle('on', b.dataset.p === pay));
-    $('#pricerow').hidden = pay === 'free' || pay === 'package';
+    const opts = cx ? PAY_CX : PAY;
+    if (!opts[pay]) pay = cx ? 'none' : 'paid';
+    $('#jpay').innerHTML = Object.entries(opts).map(([k, n]) => `<button type="button" data-p="${k}" class="${pay === k ? 'on' : ''}">${n}</button>`).join('');
+    $('#cxbox').classList.toggle('on', !!cx); $('#cxrow').hidden = !cx;
+    document.querySelectorAll('#jst button').forEach(b => b.classList.toggle('on', b.dataset.s === cx));
+    $('#pricerow').hidden = pay === 'free' || pay === 'package' || pay === 'none';
     $('#pdrow').hidden = pay !== 'paid';
     const name = $('#jc').value.trim();
     let hint = '';
     if (pay === 'package') { const b = pkgBalance(name); const left = b.left - (e.pay === 'package' && !isNew ? 0 : 1); hint = name ? (b.bought ? `После этой сессии в пакете останется: ${left} ${plural(left, ['сессия', 'сессии', 'сессий'])}${left < 0 ? ' — пакет исчерпан, добавьте новый в карточке клиента' : ''}.` : 'У клиента нет пакета. Добавьте пакет в карточке клиента.') : ''; }
     if (pay === 'unpaid') hint = 'Сессия попадёт в «Долги» (Финансы), клиенту можно отправить напоминание.';
     if (pay === 'free') hint = 'Бесплатная сессия не учитывается в поступлениях.';
+    if (cx && pay === 'none') hint = cx === 'client' ? 'Отмена без оплаты. Если по вашим правилам поздняя отмена оплачивается — выберите «Оплачено» или «Не оплачено» (попадёт в долги), либо «Списать из пакета».' : 'Отмена психологом — без оплаты.';
+    else if (cx && pay === 'unpaid') hint = 'Оплата за отмену попадёт в «Долги», клиенту можно отправить напоминание.';
     $('#payhint').textContent = hint;
   };
   const clientInfo = (autofill) => {
@@ -689,7 +711,8 @@ function viewJournalEdit(id, qs) {
     if (d.list.length) parts.push(`<b class="debt">долг: ${sumText(d.byCur)}</b>`);
     $('#cinfo').innerHTML = parts.length ? parts.join(' · ') + ` · <a href="#/client/${encodeURIComponent(name)}">карточка</a>` : (allClientNames().includes(name) ? '' : 'Новый клиент — настройки тарифа можно задать в его карточке (Журнал → Клиенты).');
     if (autofill) {
-      if (c.mode === 'free') pay = 'free';
+      if (cx) { /* для отменённой сессии статус оплаты не меняем, только цену */ }
+      else if (c.mode === 'free') pay = 'free';
       else if (b.left > 0) pay = 'package';
       else pay = 'paid';
       const base = +c.price || defPrice();
@@ -699,6 +722,7 @@ function viewJournalEdit(id, qs) {
     }
   };
   $('#jpay').onclick = ev => { const b = ev.target.closest('[data-p]'); if (!b) return; pay = b.dataset.p; syncPay(); };
+  $('#jst').onclick = ev => { const b = ev.target.closest('[data-s]'); if (!b) return; const was = cx; cx = b.dataset.s; if (cx && !was) pay = 'none'; else if (!cx && was) { pay = 'paid'; clientInfo(true); } syncPay(); };
   $('#jc').addEventListener('change', () => clientInfo(true));
   $('#jd').onchange = () => { $('#jwd').textContent = $('#jd').value ? weekday($('#jd').value) : ''; if (pay === 'paid' && isNew) $('#jpd').value = $('#jd').value; };
   clientInfo(isNew && !!e.client); syncPay();
@@ -707,7 +731,8 @@ function viewJournalEdit(id, qs) {
   $('#pick').onclick = () => pickTechnique(t => { const v = $('#jte').value.trim(); $('#jte').value = v ? v + '; ' + t : t; });
   $('#save').onclick = () => {
     const x = { id: e.id, date: $('#jd').value || today(), time: $('#jtm').value, client: $('#jc').value.trim(), topic: $('#jtp').value.trim(), tech: $('#jte').value.trim(), note: $('#jn').value.trim(),
-      pay, price: (pay === 'free' || pay === 'package') ? 0 : (+$('#jpr').value || 0), cur: $('#jcur').value, paidDate: pay === 'paid' ? ($('#jpd').value || $('#jd').value) : '' };
+      pay, price: (pay === 'free' || pay === 'package' || pay === 'none') ? 0 : (+$('#jpr').value || 0), cur: $('#jcur').value, paidDate: pay === 'paid' ? ($('#jpd').value || $('#jd').value) : '',
+      cancel: cx, cancelReason: cx ? $('#jcx').value.trim() : '' };
     const a = journal(); const i = a.findIndex(y => y.id === x.id); if (i >= 0) a[i] = x; else a.push(x);
     if (store.set('journal', a)) { toast('Запись сохранена'); location.replace('#/journal'); }
   };
@@ -741,9 +766,9 @@ function viewClients() {
   const render = () => {
     const q = norm($('#cq').value.trim());
     const rows = names.filter(n => !q || norm(n).includes(q)).map(n => {
-      const c = getClient(n), js = journal().filter(e => e.client === n), last = sortJ(js)[0], b = pkgBalance(n), d = debts(n);
+      const c = getClient(n), all = journal().filter(e => e.client === n), js = held(all), ncx = all.length - js.length, last = sortJ(js)[0], b = pkgBalance(n), d = debts(n);
       return `<a class="card jcard" href="#/client/${encodeURIComponent(n)}"><div class="jtop"><b>${esc(n)}</b>${clientsDb()[n] && c.mode !== 'regular' ? `<span class="paytag ${c.mode === 'free' ? 'free' : 'pkg'}">${TARIFF[c.mode]}${c.mode === 'discount' ? ' ' + c.disc + '%' : ''}</span>` : ''}${d.list.length ? `<span class="paytag debt">долг ${sumText(d.byCur)}</span>` : ''}</div>
-        <p>${js.length} ${plural(js.length, ['сессия', 'сессии', 'сессий'])}${last ? ' · последняя ' + dateShort(last.date) : ''}${b.bought ? ` · пакет: осталось ${b.left}` : ''}</p></a>`;
+        <p>${js.length} ${plural(js.length, ['сессия', 'сессии', 'сессий'])}${ncx ? ` · <span class="debt">отмен ${ncx}</span>` : ''}${last ? ' · последняя ' + dateShort(last.date) : ''}${b.bought ? ` · пакет: осталось ${b.left}` : ''}</p></a>`;
     });
     $('#clist').innerHTML = rows.join('') || '<div class="empty">Клиенты появятся здесь после первой записи в журнале или кнопкой «Новый клиент».</div>';
   };
@@ -754,7 +779,7 @@ function viewClients() {
 function viewClient(name) {
   setTab('journal'); setTitle(name, true);
   const c = getClient(name);
-  const js = sortJ(journal().filter(e => e.client === name));
+  const jsAll = sortJ(journal().filter(e => e.client === name)), js = held(jsAll), jcx = cxOf(jsAll);
   const b = pkgBalance(name), d = debts(name);
   const paid = {}; receipts('', '', name).forEach(r => paid[r.cur] = (paid[r.cur] || 0) + r.amount);
   const cnt = k => js.filter(e => e.pay === k).length;
@@ -765,6 +790,7 @@ function viewClient(name) {
       <div class="stat"><span>Оплачено всего</span><b>${sumText(paid)}</b></div>
       <div class="stat ${d.list.length ? 'bad' : ''}"><span>Долг</span><b>${d.list.length ? sumText(d.byCur) : 'нет'}</b>${d.list.length ? `<small>${d.list.length} ${plural(d.list.length, ['сессия', 'сессии', 'сессий'])}</small>` : ''}</div>
       <div class="stat"><span>Пакет</span><b>${b.bought ? `осталось ${b.left}` : 'нет'}</b>${b.bought ? `<small>куплено ${b.bought} · списано ${b.used}</small>` : ''}</div>
+      ${jcx.length ? `<div class="stat cx"><span>Отменено</span><b>${jcx.length}</b><small>клиентом ${jcx.filter(e => e.cancel === 'client').length} · психологом ${jcx.filter(e => e.cancel === 'psy').length}</small></div>` : ''}
     </div>
     <div class="toolbar"><a class="btn primary" href="#/journal/new?client=${encodeURIComponent(name)}">${ICON.plus}Новая запись</a>${d.list.length ? `<button class="btn" id="remind">Напомнить об оплате</button><button class="btn" id="payall">Отметить долг оплаченным</button>` : ''}<button class="btn" id="addpk">${ICON.plus}Пакет</button></div>
     <div class="setting"><h3>Тариф и контакты</h3><div class="form">
@@ -778,7 +804,7 @@ function viewClient(name) {
     </div></div>
     ${pk.length ? `<div class="sectionlabel">Пакеты</div>${pk.map(p => `<div class="card jcard"><div class="jtop"><span class="jtime">${dateShort(p.date)}</span><b>${p.count} ${plural(+p.count, ['сессия', 'сессии', 'сессий'])}</b><span class="paytag ok">${money(p.amount, p.cur)}</span><button class="iconbtn" data-delpk="${p.id}" aria-label="Удалить пакет">${ICON.trash}</button></div>${p.note ? `<p>${esc(p.note)}</p>` : ''}</div>`).join('')}` : ''}
     <div class="sectionlabel">Консультации</div>
-    ${js.map(x => `<a class="card jcard" href="#/journal/edit/${x.id}"><div class="jtop"><span class="jtime">${dateShort(x.date)}</span><b>${esc(x.topic || 'без темы')}</b>${payTag(x)}</div>${x.tech ? `<p>${esc(x.tech)}</p>` : ''}</a>`).join('') || '<p class="small">Консультаций пока нет.</p>'}`;
+    ${jsAll.map(x => `<a class="card jcard${x.cancel ? ' cancelled' : ''}" href="#/journal/edit/${x.id}"><div class="jtop"><span class="jtime">${dateShort(x.date)}</span><b>${esc(x.topic || 'без темы')}</b>${cxTag(x)}${payTag(x)}</div>${cxLine(x)}${x.tech ? `<p>${esc(x.tech)}</p>` : ''}</a>`).join('') || '<p class="small">Консультаций пока нет.</p>'}`;
   let mode = c.mode;
   const upd = () => {
     document.querySelectorAll('#cmode button').forEach(x => x.classList.toggle('on', x.dataset.m === mode));
@@ -830,7 +856,7 @@ function markPaid(ids, done) {
 }
 function reminderText(name) {
   const d = debts(name);
-  const lines = d.list.map(e => `• ${dateShort(e.date)} — ${money(e.price, e.cur)}`);
+  const lines = d.list.map(e => `• ${dateShort(e.date)} — ${money(e.price, e.cur)}${e.cancel ? ' (поздняя отмена)' : ''}`);
   return `Здравствуйте! Мягко напоминаю об оплате ${d.list.length > 1 ? 'консультаций' : 'консультации'}:\n${lines.join('\n')}\nИтого к оплате: ${sumText(d.byCur)}.\nСпасибо! Если оплата уже прошла — пожалуйста, не обращайте внимания на это сообщение.`;
 }
 function remindSheet(name) {
@@ -864,8 +890,9 @@ function viewFinance(qs) {
   const render = () => {
     const rc = receipts(from, to);
     const byCur = {}; rc.forEach(r => { const x = byCur[r.cur] = byCur[r.cur] || { total: 0, sess: 0, pkg: 0, n: 0 }; x.total += r.amount; x.n++; if (r.kind.startsWith('Пакет')) x.pkg += r.amount; else x.sess += r.amount; });
-    const js = journal().filter(e => (!from || e.date >= from) && (!to || e.date <= to));
+    const jsAll = journal().filter(e => (!from || e.date >= from) && (!to || e.date <= to)), js = held(jsAll), jcx = cxOf(jsAll);
     const cnt = k => js.filter(e => e.pay === k).length;
+    const lost = {}; jcx.filter(e => e.pay === 'none' && e.cancel === 'client').forEach(e => { const c = getClient(e.client); const base = c.mode === 'free' ? 0 : c.mode === 'discount' ? (+c.price || defPrice()) * (1 - (+c.disc || 0) / 100) : (+c.price || defPrice()); if (base) lost[c.cur || defCur()] = (lost[c.cur || defCur()] || 0) + base; });
     const d = debts();
     // по месяцам
     const months = {}; rc.forEach(r => { const m = r.date.slice(0, 7); months[m] = months[m] || {}; months[m][r.cur] = (months[m][r.cur] || 0) + r.amount; });
@@ -882,6 +909,11 @@ function viewFinance(qs) {
         <div class="stat"><span>Сессий</span><b>${js.length}</b></div><div class="stat"><span>Оплачено</span><b>${cnt('paid')}</b></div>
         <div class="stat"><span>Из пакета</span><b>${cnt('package')}</b></div><div class="stat"><span>Бесплатно</span><b>${cnt('free')}</b></div>
       </div>
+      ${jcx.length ? `<div class="sectionlabel">Отмены за период</div><div class="statgrid">
+        <div class="stat cx"><span>Отменено клиентом</span><b>${jcx.filter(e => e.cancel === 'client').length}</b><small>оплачено/в долг: ${jcx.filter(e => e.cancel === 'client' && (e.pay === 'paid' || e.pay === 'unpaid' || e.pay === 'package')).length}</small></div>
+        <div class="stat cx"><span>Отменено психологом</span><b>${jcx.filter(e => e.cancel === 'psy').length}</b></div>
+        ${Object.keys(lost).length ? `<div class="stat cx"><span>Недополучено (отмены без оплаты)</span><b>${sumText(lost)}</b><small>по тарифу клиента</small></div>` : ''}
+      </div><div class="card">${sortJ(jcx).map(e => `<a class="crow" href="#/journal/edit/${e.id}"><span>${dateShort(e.date)} · ${esc(e.client || '—')}<small class="debt">${CANCEL[e.cancel]}${e.cancelReason ? ': ' + esc(e.cancelReason) : ''}</small></span><b>${e.pay === 'none' ? '—' : PAY_CX[e.pay]}</b></a>`).join('')}</div>` : ''}
       <div class="sectionlabel">Долги · все неоплаченные сессии</div>
       ${Object.keys(debtByCl).length ? Object.entries(debtByCl).sort((a, b) => a[1].oldest.localeCompare(b[1].oldest)).map(([n, x]) => `<div class="card jcard debtcard"><div class="jtop"><b><a href="#/client/${encodeURIComponent(n)}">${esc(n)}</a></b><span class="paytag debt">${sumText(x.byCur)}</span></div>
           <p>${x.n} ${plural(x.n, ['сессия', 'сессии', 'сессий'])} · самая ранняя ${dateShort(x.oldest)} (${days(x.oldest)} ${plural(days(x.oldest), ['день', 'дня', 'дней'])} назад)</p>
@@ -919,10 +951,12 @@ function financeReport(from, to) {
         const d = debts();
         const rows = rc.map(r => [dateShort(r.date), r.client || '', r.kind, money(r.amount, r.cur), r.cur]);
         Object.entries(tot).forEach(([c, v]) => rows.push(['', 'ИТОГО ' + c, '', money(v, c), c]));
-        d.list.forEach(e => rows.push([dateShort(e.date), e.client || '', 'ДОЛГ (не оплачено)', money(e.price, e.cur), e.cur || defCur()]));
+        d.list.forEach(e => rows.push([dateShort(e.date), e.client || '', e.cancel ? 'ДОЛГ (поздняя отмена)' : 'ДОЛГ (не оплачено)', money(e.price, e.cur), e.cur || defCur()]));
+        const fx = journal().filter(e => e.cancel && (!from || e.date >= from) && (!to || e.date <= to)).sort((a, b) => a.date.localeCompare(b.date));
+        fx.forEach(e => { const r = [dateShort(e.date), e.client || '', (CANCEL[e.cancel] || 'Отменена') + (e.cancelReason ? ': ' + e.cancelReason : ''), e.pay === 'none' ? 'без оплаты' : (PAY_CX[e.pay] || '').toLowerCase(), e.pay === 'paid' || e.pay === 'unpaid' ? e.cur || defCur() : '']; r.red = true; rows.push(r); });
         if (!rows.length) { toast('Нет данных за период'); return; }
         const period = from || to ? `${from ? dateShort(from) : '…'} — ${to ? dateShort(to) : '…'}` : 'за всё время';
-        const sub = `Период: ${period}. Поступило: ${sumText(tot)}. Долги: ${d.list.length ? sumText(d.byCur) : 'нет'}. Сформировано ${dateShort(today())}.`;
+        const sub = `Период: ${period}. Поступило: ${sumText(tot)}. Долги: ${d.list.length ? sumText(d.byCur) : 'нет'}.${fx.length ? ` Отмен: ${fx.length} (выделены красным).` : ''} Сформировано ${dateShort(today())}.`;
         const footer = '© ' + new Date().getFullYear() + ' Елена Кирсанова. Все права защищены. Конфиденциально.';
         const fname = 'Финансовый_отчёт_' + (from || 'начало') + '_' + (to || today()) + '.' + fmt;
         try {
@@ -944,6 +978,7 @@ function exportSheet(from, to, q) {
     <div class="chips"><button class="chip" data-p="month">Этот месяц</button><button class="chip" data-p="prev">Прошлый месяц</button><button class="chip" data-p="year">Этот год</button><button class="chip" data-p="all">Всё время</button></div>
     <label class="fl">Только клиент <span class="small">(необязательно)</span><input class="field" id="ec" list="eclist" value=""><datalist id="eclist">${allClientNames().map(c => `<option value="${esc(c)}">`).join('')}</datalist></label>
     <label class="pick"><input type="checkbox" id="epay" checked><span>Включить колонку «Оплата»</span></label>
+    <label class="pick"><input type="checkbox" id="ecx" checked><span>Включить отменённые сессии (выделяются красным)</span></label>
     <div class="lbl">Формат</div>
     <div class="seg" id="efmt"><button data-f="docx" class="on">Word (.docx)</button><button data-f="pdf">PDF</button></div>
     <div class="sheetbar"><button class="btn primary" id="eshare">${ICON.share}Отправить / сохранить</button><button class="btn" id="esave">Скачать на устройство</button></div>
@@ -953,18 +988,19 @@ function exportSheet(from, to, q) {
       el.querySelector('#efmt').onclick = e => { const b = e.target.closest('[data-f]'); if (!b) return; fmt = b.dataset.f; el.querySelectorAll('#efmt button').forEach(x => x.classList.toggle('on', x === b)); };
       el.querySelector('.chips').onclick = e => { const b = e.target.closest('[data-p]'); if (!b) return; const [f, tt] = periodRange(b.dataset.p); el.querySelector('#ef').value = f; el.querySelector('#et').value = tt; };
       const go = async mode => {
-        const f = el.querySelector('#ef').value, tt = el.querySelector('#et').value, cl = el.querySelector('#ec').value.trim(), withPay = el.querySelector('#epay').checked;
+        const f = el.querySelector('#ef').value, tt = el.querySelector('#et').value, cl = el.querySelector('#ec').value.trim(), withPay = el.querySelector('#epay').checked, withCx = el.querySelector('#ecx').checked;
         const qq = norm(q || '');
-        const list = journal().filter(e => (!f || e.date >= f) && (!tt || e.date <= tt) && (!cl || e.client === cl) && (!qq || norm([e.client, e.topic, e.tech, e.note].join(' ')).includes(qq)))
+        const list = journal().filter(e => (!f || e.date >= f) && (!tt || e.date <= tt) && (!cl || e.client === cl) && (withCx || !e.cancel) && (!qq || norm([e.client, e.topic, e.tech, e.note].join(' ')).includes(qq)))
           .sort((a, b) => (a.date + (a.time || '')).localeCompare(b.date + (b.time || '')));
         if (!list.length) { toast('Нет записей за выбранный период'); return; }
         const period = f || tt ? `${f ? dateShort(f) : '…'} — ${tt ? dateShort(tt) : '…'}` : 'за всё время';
         const title = 'Журнал консультаций' + (cl ? ' · ' + cl : '');
         const tot = {}; list.forEach(e => { if (e.pay === 'paid' && +e.price) tot[e.cur || defCur()] = (tot[e.cur || defCur()] || 0) + +e.price; });
-        const sub = `Период: ${period}. Записей: ${list.length}.${withPay ? ' Оплачено за сессии: ' + sumText(tot) + '.' : ''} Сформировано ${dateShort(today())}.`;
-        const payCell = e => e.pay ? (e.pay === 'paid' || e.pay === 'unpaid' ? money(e.price, e.cur) + ' · ' : '') + PAY[e.pay].toLowerCase() : '';
+        const ncx = cxOf(list).length;
+        const sub = `Период: ${period}. Проведено: ${list.length - ncx}${ncx ? `, отменено: ${ncx} (клиентом ${list.filter(e => e.cancel === 'client').length}, психологом ${list.filter(e => e.cancel === 'psy').length})` : ''}.${withPay ? ' Оплачено за сессии: ' + sumText(tot) + '.' : ''} Сформировано ${dateShort(today())}.`;
+        const payCell = e => e.pay ? (e.pay === 'paid' || e.pay === 'unpaid' ? money(e.price, e.cur) + ' · ' : '') + ((e.cancel ? PAY_CX : PAY)[e.pay] || '').toLowerCase() : '';
         const head = ['Дата', 'День недели', 'Время', 'Клиент', 'Запрос / тема', 'Техники', 'Заметка', ...(withPay ? ['Оплата'] : [])];
-        const rows = list.map(e => [dateShort(e.date), weekday(e.date), e.time || '', e.client || '', e.topic || '', e.tech || '', e.note || '', ...(withPay ? [payCell(e)] : [])]);
+        const rows = list.map(e => { const r = [dateShort(e.date), weekday(e.date), e.time || '', e.client || '', (e.cancel ? 'ОТМЕНЕНА ' + (e.cancel === 'client' ? 'клиентом' : 'психологом') + (e.cancelReason ? ': ' + e.cancelReason : '') + (e.topic ? '\n' : '') : '') + (e.topic || ''), e.tech || '', e.note || '', ...(withPay ? [payCell(e)] : [])]; r.red = !!e.cancel; return r; });
         const widths = withPay ? [0.075, 0.1, 0.05, 0.1, 0.14, 0.165, 0.24, 0.13] : [0.08, 0.09, 0.055, 0.11, 0.17, 0.2, 0.295];
         const footer = '© ' + new Date().getFullYear() + ' Елена Кирсанова. Все права защищены. Конфиденциально.';
         const fname = 'Журнал_консультаций_' + (f || 'начало') + '_' + (tt || today()) + (cl ? '_' + cl.replace(/[^\wа-яё\-]+/gi, '_') : '') + '.' + fmt;

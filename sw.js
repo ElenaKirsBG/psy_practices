@@ -1,5 +1,5 @@
 /* Service worker: сохраняет всё приложение и библиотеку для работы без интернета */
-const CACHE = 'psykab-v3';
+const CACHE = 'psykab-v4';
 const CORE = [
   './', 'index.html', 'styles.css', 'export.js', 'app.js', 'manifest.webmanifest',
   'fonts/Lora-Variable.ttf', 'fonts/DejaVuSans.ttf', 'icons/icon-180.png', 'icons/icon-192.png', 'icons/icon-512.png',

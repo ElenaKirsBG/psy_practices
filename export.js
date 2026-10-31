@@ -28,17 +28,18 @@
 
   /* ---------------- DOCX ---------------- */
   const x = s => String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-  function runs(text, bold, size) {
-    return String(text || '').split('\n').map((line, i) => (i ? '<w:r><w:br/></w:r>' : '') + `<w:r><w:rPr>${bold ? '<w:b/>' : ''}<w:sz w:val="${size || 20}"/></w:rPr><w:t xml:space="preserve">${x(line)}</w:t></w:r>`).join('');
+  function runs(text, bold, size, color) {
+    return String(text || '').split('\n').map((line, i) => (i ? '<w:r><w:br/></w:r>' : '') + `<w:r><w:rPr>${bold ? '<w:b/>' : ''}${color ? `<w:color w:val="${color}"/>` : ''}<w:sz w:val="${size || 20}"/></w:rPr><w:t xml:space="preserve">${x(line)}</w:t></w:r>`).join('');
   }
-  function para(text, opt = {}) { return `<w:p><w:pPr>${opt.center ? '<w:jc w:val="center"/>' : ''}<w:spacing w:after="${opt.after ?? 120}"/></w:pPr>${runs(text, opt.bold, opt.size)}</w:p>`; }
+  function para(text, opt = {}) { return `<w:p><w:pPr>${opt.center ? '<w:jc w:val="center"/>' : ''}<w:spacing w:after="${opt.after ?? 120}"/></w:pPr>${runs(text, opt.bold, opt.size, opt.color)}</w:p>`; }
   function docx(title, subtitle, head, rows, widths, footer) {
     const total = 15000, tw = widths.map(w => Math.round(w * total));
-    const cell = (t, i, hdr) => `<w:tc><w:tcPr><w:tcW w:w="${tw[i]}" w:type="dxa"/>${hdr ? '<w:shd w:val="clear" w:color="auto" w:fill="E3EBE6"/>' : ''}</w:tcPr>${para(t, { bold: hdr, size: 18, after: 0 })}</w:tc>`;
+    /* строка может быть помечена red=true (например, отменённая сессия) — красный фон и текст */
+    const cell = (t, i, hdr, red) => `<w:tc><w:tcPr><w:tcW w:w="${tw[i]}" w:type="dxa"/>${hdr ? '<w:shd w:val="clear" w:color="auto" w:fill="E3EBE6"/>' : red ? '<w:shd w:val="clear" w:color="auto" w:fill="FDE4E1"/>' : ''}</w:tcPr>${para(t, { bold: hdr, size: 18, after: 0, color: red ? 'B42318' : '' })}</w:tc>`;
     const tbl = `<w:tbl><w:tblPr><w:tblW w:w="${total}" w:type="dxa"/><w:tblBorders>${['top', 'left', 'bottom', 'right', 'insideH', 'insideV'].map(b => `<w:${b} w:val="single" w:sz="4" w:color="A8B5AE"/>`).join('')}</w:tblBorders><w:tblCellMar><w:left w:w="80" w:type="dxa"/><w:right w:w="80" w:type="dxa"/></w:tblCellMar></w:tblPr>
       <w:tblGrid>${tw.map(w => `<w:gridCol w:w="${w}"/>`).join('')}</w:tblGrid>
       <w:tr><w:trPr><w:tblHeader/></w:trPr>${head.map((h, i) => cell(h, i, true)).join('')}</w:tr>
-      ${rows.map(r => `<w:tr><w:trPr><w:cantSplit/></w:trPr>${r.map((c, i) => cell(c, i, false)).join('')}</w:tr>`).join('')}</w:tbl>`;
+      ${rows.map(r => `<w:tr><w:trPr><w:cantSplit/></w:trPr>${r.map((c, i) => cell(c, i, false, r.red)).join('')}</w:tr>`).join('')}</w:tbl>`;
     const body = para(title, { bold: true, size: 32, after: 60 }) + para(subtitle, { size: 20, after: 200 }) + tbl + para('', {}) + para(footer, { size: 16 });
     const doc = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body>${body}<w:sectPr><w:pgSz w:w="16838" w:h="11906" w:orient="landscape"/><w:pgMar w:top="850" w:right="850" w:bottom="850" w:left="850" w:header="0" w:footer="0" w:gutter="0"/></w:sectPr></w:body></w:document>`;
     const styles = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:styles xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:docDefaults><w:rPrDefault><w:rPr><w:rFonts w:ascii="Calibri" w:hAnsi="Calibri" w:cs="Calibri" w:eastAsia="Calibri"/><w:sz w:val="20"/><w:lang w:val="ru-RU"/></w:rPr></w:rPrDefault></w:docDefaults></w:styles>`;
@@ -119,7 +120,7 @@
       if (y - rh < M + 14) newPage(false);
       if (rh > y - M - 14) rh = y - M - 14; // очень длинная запись — обрезается по высоте страницы
       let xx = M;
-      r.forEach((c, i) => { rect(xx, y - rh, cw[i], rh); lines[i].slice(0, Math.floor((rh - 2 * PAD) / LH)).forEach((ln, k) => text(ln, xx + PAD, y - PAD - (k + 1) * LH + 2.5, FS)); xx += cw[i]; });
+      r.forEach((c, i) => { rect(xx, y - rh, cw[i], rh, r.red ? '0.99 0.89 0.88' : ''); lines[i].slice(0, Math.floor((rh - 2 * PAD) / LH)).forEach((ln, k) => text(ln, xx + PAD, y - PAD - (k + 1) * LH + 2.5, FS, r.red ? '0.71 0.14 0.09' : '')); xx += cw[i]; });
       y -= rh;
     }
     text(footer, M, M - 14, 7.5, '0.42 0.41 0.38');

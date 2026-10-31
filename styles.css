@@ -236,3 +236,21 @@ select.field { -webkit-appearance: none; appearance: none; background-image: lin
 .crow:last-child { border-bottom: 0; }
 .crow span { min-width: 0; } .crow small { display: block; color: var(--muted); font-size: .78rem; }
 .crow b { white-space: nowrap; font-family: var(--serif); }
+
+/* ===== v4: отменённые сессии (красным) ===== */
+.paytag.cx { background: #d93025; color: #fff; }
+.jcard.cancelled { border-left: 4px solid #d93025; background: #fdf0ee; }
+.jcard.cancelled .jtop b, .jcard.cancelled .jtime { color: #b42318; text-decoration: line-through; text-decoration-thickness: 1px; }
+.jcard .cxr { color: #b42318; font-weight: 600; }
+.cxbox { border: 1px solid var(--line); border-radius: 14px; padding: 12px; background: var(--surface); }
+.cxbox.on { border-color: #d93025; background: #fdf0ee; }
+.cxbox .seg button[data-s="client"].on, .cxbox .seg button[data-s="psy"].on { background: #d93025; color: #fff; border-color: #d93025; }
+.cxbanner { background: #d93025; color: #fff; border-radius: 12px; padding: 10px 14px; font-weight: 600; margin-bottom: 4px; }
+.stat.cx b, .stat.cx span { color: #b42318; } .stat.cx { background: #fdf0ee; }
+.chip.cxchip.on { background: #d93025; border-color: #d93025; color: #fff; }
+:root[data-theme="dark"] .jcard.cancelled, :root[data-theme="dark"] .cxbox.on, :root[data-theme="dark"] .stat.cx { background: #3a2220; }
+:root[data-theme="dark"] .jcard.cancelled .jtop b, :root[data-theme="dark"] .jcard.cancelled .jtime, :root[data-theme="dark"] .jcard .cxr, :root[data-theme="dark"] .stat.cx b, :root[data-theme="dark"] .stat.cx span { color: #f3a093; }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme]) .jcard.cancelled, :root:not([data-theme]) .cxbox.on, :root:not([data-theme]) .stat.cx { background: #3a2220; }
+  :root:not([data-theme]) .jcard.cancelled .jtop b, :root:not([data-theme]) .jcard.cancelled .jtime, :root:not([data-theme]) .jcard .cxr, :root:not([data-theme]) .stat.cx b, :root:not([data-theme]) .stat.cx span { color: #f3a093; }
+}
